@@ -6,6 +6,7 @@ import RhinoViewer from "./components/RhinoViewer";
 
 function App() {
   const [selectedArea, setSelectedArea] = useState(null);
+  const [mapUnlocked, setMapUnlocked] = useState(false);
 
   const [sidebarHidden, setSidebarHidden] = useState(() => {
     try {
@@ -76,6 +77,20 @@ function App() {
     sections.forEach((s) => obs.observe(s));
     return () => obs.disconnect();
   }, [filteredTocItems.length]);
+
+  useEffect(() => {
+    if (!mapUnlocked) return;
+
+    const onMouseDown = (e) => {
+      const mapEl = document.getElementById("Map");
+      if (!mapEl) return;
+      if (mapEl.contains(e.target)) return;
+      setMapUnlocked(false);
+    };
+
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [mapUnlocked]);
 
   return (
     <div className={`usgbc-app${sidebarHidden ? " sidebar-hidden" : ""}`}>
@@ -161,15 +176,40 @@ function App() {
           <h3>Workspace</h3>
           <div className="workspace-grid">
             <section className="panel panel-map panel-map-top">
-              <div className="panel-header">
-                <h2>Map</h2>
-              </div>
+              
               <div className="panel-body">
-                <div id="Map" style={{ position: "absolute", inset: 0 }}>
+                <div
+                  id="Map"
+                  className={mapUnlocked ? "map-unlocked" : "map-locked"}
+                  style={{ position: "absolute", inset: 0 }}
+                  onClick={() => {
+                    if (!mapUnlocked) setMapUnlocked(true);
+                  }}
+                >
+                  {mapUnlocked && (
+                    <button
+                      type="button"
+                      className="map-lock-btn"
+                      onClick={() => setMapUnlocked(false)}
+                      title="Disable map interaction"
+                    >
+                      Lock map
+                    </button>
+                  )}
+                  {!mapUnlocked && (
+                    <div className="map-lock-overlay" role="button" tabIndex={0}>
+                      Click to activate the map
+                    </div>
+                  )}
                   <iframe
                     title="CadMapper"
                     src={cadMapperUrl}
-                    style={{ width: "100%", height: "100%", border: 0 }}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      border: 0,
+                      pointerEvents: mapUnlocked ? "auto" : "none",
+                    }}
                     allow="fullscreen"
                   />
                 </div>
