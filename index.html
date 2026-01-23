@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ShadeLA Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css?v=17" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <div class="header__inner">
+          <div class="header__brandWrap">
+            <div class="brand" aria-label="ShadeLA">
+              <div class="brand__badge">
+                <span class="brand__shade">SHADE</span>
+                <span class="brand__la">LA</span>
+              </div>
+              
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="card" id="areamap">
+          <div class="card__header">
+            <h2 class="section-title">AREA MAP</h2>
+          </div>
+
+          <div class="embed embed--hero" data-embed-slot="areaMap">
+            <div class="embed__placeholder">
+              <div class="embed__placeholderTitle">Area Map Embed</div>
+              <div class="embed__placeholderText">
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="grid-2">
+          <section class="card" id="unreal">
+            <div class="card__header">
+              <h2 class="section-title">UNREAL ENGINE</h2>
+            </div>
+
+            <div class="embed embed--preview" data-embed-slot="unreal">
+              <img class="embed__image" src="./Images/Unreal.png" alt="Unreal Engine preview" loading="lazy" />
+              <div class="embed__placeholder">
+                <div class="embed__placeholderTitle">Unreal Embed / Link</div>
+              </div>
+            </div>
+
+            <div class="embed-actions" data-embed-action-slot="unreal"></div>
+          </section>
+
+          <section class="card" id="grasshopper">
+            <div class="card__header">
+              <h2 class="section-title">GRASSHOPPER</h2>
+            </div>
+
+            <div class="embed embed--preview" data-embed-slot="grasshopper">
+              <img class="embed__image" src="./Images/Grasshopper.png" alt="Grasshopper preview" loading="lazy" />
+              <div class="embed__placeholder">
+                <div class="embed__placeholderTitle">Grasshopper Embed</div>
+              </div>
+            </div>
+
+            <div class="embed-actions" data-embed-action-slot="grasshopper"></div>
+          </section>
+        </div>
+
+        <div class="grid-2">
+          <section class="card" id="canopy">
+            <div class="card__header">
+              <h2 class="section-title">CANOPY</h2>
+            </div>
+
+            <div class="embed embed--preview" data-embed-slot="canopy">
+              <div class="slideshow" data-slideshow="canopy" aria-label="Canopy slideshow">
+                <img class="slideshow__img is-active" src="./Images/Shade1%20(1).png" alt="Shade 1" loading="lazy" />
+                <img class="slideshow__img" src="./Images/Shade2.png" alt="Shade 2" loading="lazy" />
+                <img class="slideshow__img" src="./Images/Shade3.png" alt="Shade 3" loading="lazy" />
+                <img class="slideshow__img" src="./Images/Shade4.png" alt="Shade 4" loading="lazy" />
+              </div>
+              <div class="embed__placeholder">
+                <div class="embed__placeholderTitle">Canopy</div>
+              </div>
+            </div>
+
+            <div class="embed-actions" data-embed-action-slot="canopy"></div>
+          </section>
+
+          <section class="card" id="trees">
+            <div class="card__header">
+              <h2 class="section-title">TREES</h2>
+            </div>
+
+            <div class="embed embed--preview" data-embed-slot="trees">
+              <div class="slideshow" data-slideshow="trees" aria-label="Trees slideshow">
+                <img class="slideshow__img is-active" src="./Images/Tree1.jpeg" alt="Tree 1" loading="lazy" />
+                <img class="slideshow__img" src="./Images/Tree2.png" alt="Tree 2" loading="lazy" />
+              </div>
+              <div class="embed__placeholder">
+                <div class="embed__placeholderTitle">Trees</div>
+                <div class="embed__placeholderText">Add <code>Trees.png</code> or paste an embed URL into <code>app.js</code>.</div>
+              </div>
+            </div>
+
+            <div class="embed-actions" data-embed-action-slot="trees"></div>
+          </section>
+        </div>
+
+        <section class="card" id="powerbi">
+          <div class="card__header">
+            <h2 class="section-title">POWER BI</h2>
+          </div>
+
+          <div class="embed embed--powerbi" data-embed-slot="powerbi">
+            <img
+              class="embed__image"
+              src="./Images/PowerBI.png"
+              alt="Power BI dashboard preview"
+              loading="lazy"
+            />
+            <div class="embed__placeholder">
+              <div class="embed__placeholderTitle">Power BI Embed</div>
+              <div class="embed__placeholderText">
+                Paste the Power BI iframe URL into <code>app.js</code>. You can swap this for multiple reports later.
+              </div>
+            </div>
+          </div>
+
+          <div class="embed-actions" data-embed-action-slot="powerbi"></div>
+
+          <div class="project">
+            <h3 class="project__title">SHADE LA and NASA JPL</h3>
+            <div class="small">Fall 2025</div>
+            <div class="project__frameWrap">
+              <iframe
+                class="project__frame"
+                src="https://docs.google.com/presentation/d/1vvPeb8UAam5diOklqXiCtg_gKmWP0W-ja35KHTXteA0/embed?start=false&loop=false&delayms=3000"
+                allowfullscreen="true"
+              ></iframe>
+            </div>
+            <div class="embed-actions">
+              <a
+                class="button"
+                href="https://docs.google.com/presentation/d/1vvPeb8UAam5diOklqXiCtg_gKmWP0W-ja35KHTXteA0/edit?usp=sharing"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Project Slides
+              </a>
+            </div>
+          </div>
+
+          <div class="project">
+            <h3 class="project__title">SHADE LA POSTER &amp; RHINO/SKETCHUP FILE</h3>
+            <div class="project__frameWrap">
+              <iframe
+                class="project__frame"
+                src="https://docs.google.com/presentation/d/1UNJFyagHKlXVxsVKjO_JvttP-24s8fnz32RBHClqbI8/embed?start=false&loop=false&delayms=3000&slide=id.g3b189f6e42a_0_0"
+                allowfullscreen="true"
+              ></iframe>
+            </div>
+            <div class="embed-actions">
+              <a
+                class="button"
+                href="https://docs.google.com/presentation/d/1UNJFyagHKlXVxsVKjO_JvttP-24s8fnz32RBHClqbI8/edit?slide=id.g3b189f6e42a_0_0#slide=id.g3b189f6e42a_0_0"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Slides
+              </a>
+            </div>
+          </div>
+
+          <div class="notes">
+            <h3 class="notes__title">PROJECT NOTES</h3>
+            <div class="notes__body" contenteditable="true" spellcheck="false">
+              Click here and type notes…
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <div class="footer__inner">
+          <div>© <span id="year"></span> ShadeLA</div>
+          <div class="footer__meta">Single-page embed layout</div>
+        </div>
+      </footer>
+    </div>
+
+    <script src="./app.js?v=17"></script>
+  </body>
+</html>
