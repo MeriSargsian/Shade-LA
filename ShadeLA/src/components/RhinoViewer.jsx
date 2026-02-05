@@ -46,6 +46,8 @@ function RhinoViewer() {
   const pendingBboxStartFlushRef = useRef(null);
   const osmRenderSeqRef = useRef(0);
   const osmAbortRef = useRef(null);
+  const pendingCurveRequestIdRef = useRef(null);
+  const pendingCurveRequestTimerRef = useRef(0);
 
   useEffect(() => {
     drawModeRef.current = drawMode;
@@ -232,6 +234,24 @@ function RhinoViewer() {
         try {
           rhinoRef.current = await rhino3dm({ locateFile: () => rhino3dmWasmUrl });
           setRhinoReady(true);
+
+          // If GH asked for curves before rhino3dm finished loading, answer now.
+          if (pendingCurveRequestIdRef.current) {
+            const requestId = pendingCurveRequestIdRef.current;
+            pendingCurveRequestIdRef.current = null;
+            if (pendingCurveRequestTimerRef.current) {
+              window.clearTimeout(pendingCurveRequestTimerRef.current);
+              pendingCurveRequestTimerRef.current = 0;
+            }
+            const items = sendDrawingsToGrasshopper() || [];
+            console.log("[GH] responding queued curves", { requestId, count: items.length });
+            window.dispatchEvent(
+              new CustomEvent("grasshopper:curves-response", {
+                detail: { requestId, paramName: "cr", items },
+              })
+            );
+          }
+
           if (pendingGhSchemaRef.current) {
             addGhOverlay(pendingGhSchemaRef.current);
             pendingGhSchemaRef.current = null;
@@ -556,38 +576,300 @@ function RhinoViewer() {
       return;
     }
 
+    try {
+      if (!sendDrawingsToGrasshopper._loggedApis) {
+        sendDrawingsToGrasshopper._loggedApis = true;
+        console.log("[GH] rhino curve APIs", {
+          hasPoint3d: typeof rhino?.Point3d === "function",
+          polylineAddType: typeof rhino?.Polyline?.prototype?.add,
+          hasPolylineCurveCreateFromPoints: typeof rhino?.PolylineCurve?.createFromPoints === "function",
+          hasNurbsCurveCreate: typeof rhino?.NurbsCurve?.create === "function",
+          hasCurveCreateControlPointCurve: typeof rhino?.Curve?.createControlPointCurve === "function",
+          hasNurbsCurveCreateControlPointCurve: typeof rhino?.NurbsCurve?.createControlPointCurve === "function",
+          hasLineCurve: typeof rhino?.LineCurve === "function",
+          hasLine: typeof rhino?.Line === "function",
+          hasCommonObjectEncode: typeof rhino?.CommonObject?.encode === "function",
+          nurbsCurveCreateArity: typeof rhino?.NurbsCurve?.create === "function" ? rhino.NurbsCurve.create.length : null,
+          curveCreateControlPointCurveArity:
+            typeof rhino?.Curve?.createControlPointCurve === "function" ? rhino.Curve.createControlPointCurve.length : null,
+        });
+      }
+    } catch {
+      // ignore
+    }
+
     const all = [...drawStateRef.current.polylines];
     if (drawStateRef.current.current.length >= 2) {
       all.push(drawStateRef.current.current.map((p) => p.clone()));
     }
     if (!all.length) return;
 
+    try {
+      const lens = all.map((pts) => (pts && typeof pts.length === "number" ? pts.length : null));
+      console.log("[GH] curve candidates", {
+        lines: all.length,
+        lengths: lens,
+      });
+    } catch {
+      // ignore
+    }
+
     const items = [];
     for (const pts of all) {
       if (!pts || pts.length < 2) continue;
 
-      const poly = new rhino.Polyline();
-      for (const p of pts) {
-        // Three.js is Y-up. Rhino is Z-up.
-        // Viewer shows Rhino geometry with a -90deg X rotation, so convert back when sending to GH.
-        // Map (x, y, z) -> (x, z, y).
-        poly.add(p.x, p.z, p.y);
+      // Prefer createFromPoints / Point3dList when available.
+      let crv = null;
+      let builtVia = null;
+      try {
+        const makePt3d = (pp) => new rhino.Point3d(pp.x, pp.z, pp.y);
+        const ptsRhino = typeof rhino?.Point3d === "function" ? pts.map(makePt3d) : null;
+
+        // Special case: 2 points => LineCurve
+        if (!crv && ptsRhino && ptsRhino.length === 2) {
+          try {
+            if (typeof rhino?.LineCurve === "function") {
+              // Different builds expose different ctor signatures. Try a few.
+              const attempts = [];
+              const a = ptsRhino[0];
+              const b = ptsRhino[1];
+              const ax = a?.X ?? a?.x;
+              const ay = a?.Y ?? a?.y;
+              const az = a?.Z ?? a?.z;
+              const bx = b?.X ?? b?.x;
+              const by = b?.Y ?? b?.y;
+              const bz = b?.Z ?? b?.z;
+
+              // Some builds support LineCurve(Point3d, Point3d)
+              attempts.push(() => new rhino.LineCurve(a, b));
+
+              if (typeof rhino?.Line === "function") {
+                // Prefer LineCurve(Line) in case point-point signature isn't supported.
+                attempts.push(() => {
+                  const ln = new rhino.Line(a, b);
+                  return new rhino.LineCurve(ln);
+                });
+                // Some builds require numeric coords for Line ctor.
+                attempts.push(() => {
+                  const ln = new rhino.Line(ax, ay, az, bx, by, bz);
+                  return new rhino.LineCurve(ln);
+                });
+              }
+
+              // Some builds support numeric coords directly in LineCurve ctor.
+              attempts.push(() => new rhino.LineCurve(ax, ay, az, bx, by, bz));
+
+              for (const fn of attempts) {
+                try {
+                  const candidate = fn();
+                  if (candidate) {
+                    crv = candidate;
+                    builtVia = "LineCurve";
+                    break;
+                  }
+                } catch (e) {
+                  console.warn(
+                    `[GH] LineCurve ctor attempt failed: ${String(e?.name || "Error")}: ${String(e?.message || e)}`
+                  );
+                }
+              }
+            } else if (typeof rhino?.Line === "function") {
+              // As a last resort, return a Line (some schemas accept it as geometry).
+              try {
+                const ln = new rhino.Line(ptsRhino[0], ptsRhino[1]);
+                if (ln) {
+                  crv = ln;
+                  builtVia = "Line";
+                }
+              } catch {
+                // ignore
+              }
+            }
+          } catch (e) {
+            console.warn("[GH] LineCurve construction failed", {
+              error: e,
+              name: e?.name,
+              message: String(e?.message || e),
+              stack: e?.stack,
+            });
+          }
+        }
+
+        // Option 0: Curve.createControlPointCurve(points, degree)
+        if (!crv && ptsRhino && ptsRhino.length >= 3 && typeof rhino?.Curve?.createControlPointCurve === "function") {
+          try {
+            const fn = rhino.Curve.createControlPointCurve;
+            const arity = fn.length;
+            if (arity <= 1) crv = fn(ptsRhino);
+            else crv = fn(ptsRhino, 1);
+            if (crv) builtVia = "Curve.createControlPointCurve";
+            else {
+              console.warn("[GH] Curve.createControlPointCurve returned null", { pts: ptsRhino.length, arity });
+            }
+          } catch (e) {
+            console.warn("[GH] Curve.createControlPointCurve failed", { error: e, message: String(e?.message || e) });
+          }
+        }
+
+        // Option 1: NurbsCurve.createControlPointCurve(points, degree)
+        if (!crv && ptsRhino && typeof rhino?.NurbsCurve?.createControlPointCurve === "function") {
+          try {
+            crv = rhino.NurbsCurve.createControlPointCurve(ptsRhino, 1);
+          } catch (e) {
+            console.warn("[GH] NurbsCurve.createControlPointCurve failed", { error: e, message: String(e?.message || e) });
+          }
+        }
+
+        // Option 2: NurbsCurve.create(...) (arity differs by build)
+        const nurbsCreate = rhino?.NurbsCurve?.create;
+        if (!crv && ptsRhino && typeof nurbsCreate === "function") {
+          const attempts = [];
+          const arity = nurbsCreate.length;
+          // Common guesses across builds
+          attempts.push([false, 1, ptsRhino]);
+          attempts.push([false, 1, ptsRhino.length, ptsRhino]);
+          attempts.push([3, false, 1, ptsRhino]);
+          attempts.push([3, false, 2, ptsRhino.length, ptsRhino]);
+
+          for (const args of attempts) {
+            try {
+              const nc = nurbsCreate(...args);
+              if (nc) {
+                crv = nc;
+                builtVia = "NurbsCurve.create";
+                break;
+              }
+            } catch (e) {
+              console.warn("[GH] NurbsCurve.create failed", {
+                message: String(e?.message || e),
+                arity,
+                argsLen: args.length,
+              });
+            }
+          }
+          if (!crv) {
+            console.warn("[GH] NurbsCurve.create returned null", { pts: ptsRhino.length, arity });
+          }
+        }
+
+        const createFromPoints = rhino?.PolylineCurve?.createFromPoints;
+        if (!crv && typeof createFromPoints === "function") {
+          try {
+            if (ptsRhino) crv = createFromPoints(ptsRhino);
+          } catch (e) {
+            console.warn("[GH] PolylineCurve.createFromPoints failed", { error: e, message: String(e?.message || e) });
+          }
+        }
+
+        if (!crv) {
+          const poly = new rhino.Polyline();
+          for (const p of pts) {
+            // Three.js is Y-up. Rhino is Z-up.
+            // Viewer shows Rhino geometry with a -90deg X rotation, so convert back when sending to GH.
+            // Map (x, y, z) -> (x, z, y).
+            try {
+              if (typeof rhino?.Point3d === "function") {
+                poly.add(new rhino.Point3d(p.x, p.z, p.y));
+              } else {
+                poly.add(p.x, p.z, p.y);
+              }
+            } catch (e) {
+              console.warn("[GH] polyline point add failed", {
+                error: e,
+                message: String(e?.message || e),
+                hasPoint3d: typeof rhino?.Point3d === "function",
+                point: { x: p?.x, y: p?.y, z: p?.z },
+              });
+            }
+          }
+
+          try {
+            const polyCountRaw =
+              typeof poly?.count === "function" ? poly.count() : (poly?.count ?? poly?.Count);
+            if (typeof polyCountRaw === "number" && polyCountRaw < 2) {
+              console.warn("[GH] polyline has insufficient points after add", { polyCount: polyCountRaw, pts: pts.length });
+              continue;
+            }
+          } catch {
+            // ignore
+          }
+
+          crv = new rhino.PolylineCurve(poly);
+        }
+      } catch (e) {
+        console.warn("[GH] curve construction failed", {
+          error: e,
+          name: e?.name,
+          message: String(e?.message || e),
+          stack: e?.stack,
+          pts: pts?.length,
+        });
+        crv = null;
       }
-      const crv = new rhino.PolylineCurve(poly);
+
+      if (!crv) {
+        console.warn("[GH] curve construction produced null", { pts: pts?.length, builtVia });
+        continue;
+      }
+
+      try {
+        console.log("[GH] curve constructed", {
+          pts: pts?.length,
+          builtVia,
+          className: crv?.constructor?.name,
+          hasToJSON: typeof crv?.toJSON === "function",
+        });
+      } catch {
+        // ignore
+      }
 
       let data = null;
       try {
-        const json = crv.toJSON();
-        data = typeof json === "string" ? json : JSON.stringify(json);
-      } catch {
+        if (typeof rhino?.CommonObject?.encode === "function") {
+          const json = rhino.CommonObject.encode(crv);
+          data = typeof json === "string" ? json : JSON.stringify(json);
+        } else if (typeof crv?.toJSON === "function") {
+          const json = crv.toJSON();
+          data = typeof json === "string" ? json : JSON.stringify(json);
+        } else {
+          console.warn("[GH] curve has no serializer (encode/toJSON)", {
+            className: crv?.constructor?.name,
+          });
+        }
+      } catch (e) {
         data = null;
+        console.warn("[GH] curve serialization failed", {
+          message: String(e?.message || e),
+          pts: pts?.length,
+          hasToJSON: typeof crv?.toJSON === "function",
+          hasEncode: typeof rhino?.CommonObject?.encode === "function",
+        });
       }
 
-      if (!data) continue;
-      items.push({ type: "Rhino.Geometry.PolylineCurve", data });
+      if (!data) {
+        console.warn("[GH] curve serialization produced no data", {
+          pts: pts?.length,
+          hasToJSON: typeof crv?.toJSON === "function",
+          hasEncode: typeof rhino?.CommonObject?.encode === "function",
+        });
+        continue;
+      }
+
+      const className = crv?.constructor?.name || "";
+      let itemType = "Rhino.Geometry.Curve";
+      if (className === "PolylineCurve") itemType = "Rhino.Geometry.PolylineCurve";
+      else if (className === "NurbsCurve") itemType = "Rhino.Geometry.NurbsCurve";
+      items.push({ type: itemType, data });
     }
 
-    if (!items.length) return;
+    if (!items.length) {
+      console.warn("[GH] no curve items produced", {
+        polylines: drawStateRef.current.polylines.length,
+        currentPts: drawStateRef.current.current.length,
+        allCandidateLines: all.length,
+      });
+      return;
+    }
     window.dispatchEvent(new CustomEvent("grasshopper:input-curves", { detail: { paramName: "cr", items } }));
     return items;
   };
@@ -595,7 +877,32 @@ function RhinoViewer() {
   useEffect(() => {
     const onRequestCurves = (ev) => {
       const requestId = ev?.detail?.requestId;
+      console.log("[GH] viewer curve request", {
+        requestId,
+        rhinoReady: !!rhinoRef.current,
+        polylines: drawStateRef.current.polylines.length,
+        currentPts: drawStateRef.current.current.length,
+      });
+
+      if (!rhinoRef.current) {
+        // Queue only the latest request id; GH panel will wait a bit longer.
+        pendingCurveRequestIdRef.current = requestId;
+        if (!pendingCurveRequestTimerRef.current) {
+          pendingCurveRequestTimerRef.current = window.setTimeout(() => {
+            pendingCurveRequestTimerRef.current = 0;
+            if (pendingCurveRequestIdRef.current) {
+              console.warn("[GH] curve request timed out waiting for rhino3dm", {
+                requestId: pendingCurveRequestIdRef.current,
+              });
+              pendingCurveRequestIdRef.current = null;
+            }
+          }, 4000);
+        }
+        return;
+      }
+
       const items = sendDrawingsToGrasshopper() || [];
+      console.log("[GH] viewer curve response", { requestId, count: items.length });
       window.dispatchEvent(
         new CustomEvent("grasshopper:curves-response", {
           detail: { requestId, paramName: "cr", items },
@@ -629,6 +936,35 @@ function RhinoViewer() {
     if (!Array.isArray(values)) {
       console.warn("[GH] schema.values missing or not an array", schema);
       return;
+    }
+
+    try {
+      const outSummary = values.map((v) => {
+        const inner = v?.InnerTree || v?.innerTree;
+        const branchKeys = inner && typeof inner === "object" ? Object.keys(inner) : [];
+        let itemCount = 0;
+        const typeCounts = {};
+        if (inner && typeof inner === "object") {
+          for (const k of branchKeys) {
+            const arr = inner[k];
+            if (!Array.isArray(arr)) continue;
+            itemCount += arr.length;
+            for (const it of arr) {
+              const t = String(it?.type || "<missing>");
+              typeCounts[t] = (typeCounts[t] || 0) + 1;
+            }
+          }
+        }
+        return {
+          ParamName: v?.ParamName,
+          branches: branchKeys.length,
+          itemCount,
+          typeCounts,
+        };
+      });
+      console.log("[GH] output trees", outSummary);
+    } catch {
+      // ignore
     }
 
     const overlay = new THREE.Group();
@@ -930,7 +1266,11 @@ function RhinoViewer() {
     });
     console.log("[GH] decoded classes", decodedClasses);
     if (overlay.children.length < 1) {
-      console.warn("[GH] no meshes produced from solve output");
+      console.warn("[GH] no meshes produced from solve output", {
+        decodedCount,
+        meshCount,
+        triCount,
+      });
       return;
     }
 
@@ -1476,7 +1816,9 @@ function RhinoViewer() {
               setModelStatus("Load CadMapper model first: click Analyze on the map");
               return;
             }
-            setDrawMode((v) => !v);
+            const next = !drawModeRef.current;
+            drawModeRef.current = next;
+            setDrawMode(next);
           }}
           disabled={!baseModelReady}
           style={{

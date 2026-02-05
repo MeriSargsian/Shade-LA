@@ -40,7 +40,9 @@ function GrasshopperPanel() {
         if (!detail || detail.requestId !== requestId) return;
         done = true;
         window.removeEventListener("grasshopper:curves-response", onResp);
-        resolve(Array.isArray(detail.items) ? detail.items : []);
+        const items = Array.isArray(detail.items) ? detail.items : [];
+        console.log("[GH] curves received from viewer", { count: items.length });
+        resolve(items);
       };
 
       window.addEventListener("grasshopper:curves-response", onResp);
@@ -49,8 +51,9 @@ function GrasshopperPanel() {
       window.setTimeout(() => {
         if (done) return;
         window.removeEventListener("grasshopper:curves-response", onResp);
+        console.warn("[GH] curves request timeout (viewer did not respond)");
         resolve(null);
-      }, 300);
+      }, 2000);
     });
   };
 
