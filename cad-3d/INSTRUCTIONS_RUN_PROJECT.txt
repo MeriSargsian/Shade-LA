@@ -1,0 +1,52 @@
+ShadeLA CAD-3D Dashboard — Run Instructions (Windows)
+
+1) Requirements
+- Node.js: recommended 20.x LTS (or a newer compatible version).
+- npm: comes bundled with Node.js.
+
+2) Install dependencies
+Open a terminal in the project folder:
+  d:\meryShadeLa\ShadeLA\cad-3d
+
+Recommended (reproducible install strictly based on package-lock.json):
+  npm ci
+
+If npm ci is not suitable (for example, if package-lock.json is missing), you can use:
+  npm install
+
+Note:
+- After install, the postinstall script (scripts/copy-cesium.cjs) runs automatically and copies Cesium static assets.
+
+3) Environment variables
+The project root should contain:
+  .env.local
+
+Minimal required values (example):
+  NEXT_PUBLIC_CESIUM_ION_TOKEN=...
+  NEXT_PUBLIC_CESIUM_BASE_URL=/cesium
+  NEXT_PUBLIC_MAPTILER_KEY=...
+  NEXT_PUBLIC_RHINO_COMPUTE_URL=http://localhost:6500/
+
+Important:
+- Without valid Cesium/MapTiler tokens, the background maps may not load.
+- If you change .env.local, restart the dev server.
+
+4) Run in development mode
+  npm run dev
+
+The server will start at:
+- http://localhost:3000
+- http://localhost:3000/dashboard
+
+5) Build and run in production mode (optional)
+  npm run build
+  npm run start
+
+6) Troubleshooting
+- Port 3000 is in use: stop the other process or run Next on another port (example):
+    set PORT=3001 && npm run dev
+  (PowerShell variant):
+    $env:PORT=3001; npm run dev
+
+- Cesium static asset issues:
+  reinstall dependencies (npm ci) and make sure postinstall completed successfully.
