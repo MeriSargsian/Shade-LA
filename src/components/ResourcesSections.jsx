@@ -3,18 +3,18 @@ import React, { useEffect, useMemo, useState } from "react";
 function ResourcesSections() {
   const canopyImages = useMemo(
     () => [
-      { src: "/Images/Shade1%20(1).png", alt: "Shade 1" },
-      { src: "/Images/Shade2.png", alt: "Shade 2" },
-      { src: "/Images/Shade3.png", alt: "Shade 3" },
-      { src: "/Images/Shade4.png", alt: "Shade 4" },
+      { src: `${import.meta.env.BASE_URL}Images/Shade1%20(1).png`, alt: "Shade 1" },
+      { src: `${import.meta.env.BASE_URL}Images/Shade2.png`, alt: "Shade 2" },
+      { src: `${import.meta.env.BASE_URL}Images/Shade3.png`, alt: "Shade 3" },
+      { src: `${import.meta.env.BASE_URL}Images/Shade4.png`, alt: "Shade 4" },
     ],
     []
   );
 
   const treeImages = useMemo(
     () => [
-      { src: "/Images/Tree1.jpeg", alt: "Tree 1" },
-      { src: "/Images/Tree2.png", alt: "Tree 2" },
+      { src: `${import.meta.env.BASE_URL}Images/Tree1.jpeg`, alt: "Tree 1" },
+      { src: `${import.meta.env.BASE_URL}Images/Tree2.png`, alt: "Tree 2" },
     ],
     []
   );
@@ -66,7 +66,7 @@ function ResourcesSections() {
           <div className="resources-embed__frameWrap">
             <iframe
               className="resources-embed__frame"
-              src="/Shade%20LA_%20Transforming%20Urban%20Heat%20Islands%20in%20South%20Los%20Angeles%20Census%20Tracts%205351.01,%202430,%202382,%20and%202240.10%20through%20Equitable%20Shade%20Structures%20and%20Regenerative%20Design.pdf"
+              src={`${import.meta.env.BASE_URL}Shade%20LA_%20Transforming%20Urban%20Heat%20Islands%20in%20South%20Los%20Angeles%20Census%20Tracts%205351.01,%202430,%202382,%20and%202240.10%20through%20Equitable%20Shade%20Structures%20and%20Regenerative%20Design.pdf`}
               title="Aura Reports PDF"
             />
           </div>

@@ -3,17 +3,17 @@ import React, { useEffect, useMemo, useState } from "react";
 function CanopyTreesSection() {
   const canopyImages = useMemo(
     () => [
-      { src: "/Images/Shade1%20(1).png", alt: "Shade 1" },
-      { src: "/Images/Shade2.png", alt: "Shade 2" },
-      { src: "/Images/Shade4.png", alt: "Shade 4" },
+      { src: `${import.meta.env.BASE_URL}Images/Shade1%20(1).png`, alt: "Shade 1" },
+      { src: `${import.meta.env.BASE_URL}Images/Shade2.png`, alt: "Shade 2" },
+      { src: `${import.meta.env.BASE_URL}Images/Shade4.png`, alt: "Shade 4" },
     ],
     []
   );
 
   const treeImages = useMemo(
     () => [
-      { src: "/Images/Tree1.jpeg", alt: "Tree 1" },
-      { src: "/Images/Tree2.png", alt: "Tree 2" },
+      { src: `${import.meta.env.BASE_URL}Images/Tree1.jpeg`, alt: "Tree 1" },
+      { src: `${import.meta.env.BASE_URL}Images/Tree2.png`, alt: "Tree 2" },
     ],
     []
   );
