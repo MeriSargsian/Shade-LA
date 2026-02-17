@@ -10,6 +10,15 @@ function GrasshopperPanel() {
     return "/gh/unnamed.gh";
   }, []);
 
+  const computeParamsUrl = useMemo(() => {
+    const env = import.meta?.env?.VITE_COMPUTE_PARAMS_URL;
+    if (env) return String(env);
+    if (typeof window !== "undefined") {
+      return `${window.location.protocol}//${window.location.hostname}:3001/api/compute/params`;
+    }
+    return "http://localhost:3001/api/compute/params";
+  }, []);
+
   const [pointerUrl, setPointerUrl] = useState(defaultPointer);
   const [statusText, setStatusText] = useState("");
   const [detailsText, setDetailsText] = useState("");
@@ -20,7 +29,6 @@ function GrasshopperPanel() {
   const [lineLengthStrength, setLineLengthStrength] = useState(8);
   const [lineLengthFactor, setLineLengthFactor] = useState(0.5);
   const [loadFactor, setLoadFactor] = useState(1.62134);
-  const [runToggle, setRunToggle] = useState(true);
   const [resetPulse, setResetPulse] = useState(false);
 
   const [x, setX] = useState(10);
@@ -132,19 +140,32 @@ function GrasshopperPanel() {
     };
   };
 
-  const runSolve = async () => {
+  const doReset = async () => {
+    setCurveItems([]);
+    try {
+      window.dispatchEvent(new CustomEvent("grasshopper:clear-result"));
+    } catch {
+      // ignore
+    }
+    await runSolve({ reset: true });
+  };
+
+  const runSolve = async (opts = null) => {
     setIsLoadingSolve(true);
     setStatusText("");
     setDetailsText("");
     setLastRequestText("");
     try {
+      const effectiveReset = !!(opts && opts.reset === true);
+      const effectiveRun = opts && typeof opts.run === "boolean" ? opts.run : true;
+
       const respItems = await requestCurvesFromViewer();
       if (Array.isArray(respItems)) setCurveItems(respItems);
 
       const currentCurves = Array.isArray(respItems) ? respItems : curveItems;
 
       try {
-        await fetch("/api/compute/params", {
+        const paramsRes = await fetch(computeParamsUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -155,13 +176,30 @@ function GrasshopperPanel() {
             lineStrength: lineLengthStrength,
             lineFactor: lineLengthFactor,
             load: loadFactor,
-            reset: resetPulse,
-            run: runToggle,
+            reset: effectiveReset,
+            run: effectiveRun,
             cr: Array.isArray(currentCurves) ? currentCurves : [],
           }),
         });
-      } catch {
-        // ignore
+        if (!paramsRes.ok) {
+          let bodyText = "";
+          try {
+            bodyText = await paramsRes.text();
+          } catch {
+            // ignore
+          }
+          console.warn("[GH] compute params POST returned non-OK", {
+            url: computeParamsUrl,
+            status: paramsRes.status,
+            statusText: paramsRes.statusText,
+            body: bodyText,
+          });
+        }
+      } catch (e) {
+        console.warn("[GH] failed to POST /api/compute/params", {
+          url: computeParamsUrl,
+          error: String(e),
+        });
       }
 
       const pointer = withCacheBust(normalizePointer(pointerUrl));
@@ -180,8 +218,8 @@ function GrasshopperPanel() {
       values.push(buildNumericValue("h", h));
       values.push(buildNumericValue("z", z));
 
-      values.push(buildBooleanValue("RUn", runToggle));
-      if (resetPulse) values.push(buildBooleanValue("Reset", true));
+      values.push(buildBooleanValue("run", effectiveRun));
+      if (effectiveReset) values.push(buildBooleanValue("Reset", true));
 
       const payload = {
         pointer,
@@ -206,7 +244,15 @@ function GrasshopperPanel() {
           const schema = JSON.parse(text);
           outCount = Array.isArray(schema?.values) ? schema.values.length : 0;
           console.log("[GH] solve OK", { outputs: outCount });
-          window.dispatchEvent(new CustomEvent("grasshopper:result", { detail: { schema } }));
+          if (effectiveReset) {
+            try {
+              window.dispatchEvent(new CustomEvent("grasshopper:clear-result"));
+            } catch {
+              // ignore
+            }
+          } else {
+            window.dispatchEvent(new CustomEvent("grasshopper:result", { detail: { schema } }));
+          }
         } catch {
           // ignore
         }
@@ -325,32 +371,19 @@ function GrasshopperPanel() {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <button
             type="button"
-            onClick={() => setResetPulse(true)}
+            onClick={doReset}
+            disabled={isLoadingSolve}
             style={{
               padding: "6px 10px",
               borderRadius: 8,
               border: "1px solid rgba(255,255,255,0.15)",
               background: "rgba(17,24,39,0.8)",
               color: "#e5e7eb",
-              cursor: "pointer",
+              cursor: isLoadingSolve ? "wait" : "pointer",
+              opacity: isLoadingSolve ? 0.7 : 1,
             }}
           >
             Reset
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRunToggle((v) => !v)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: "1px solid rgba(255,255,255,0.15)",
-              background: runToggle ? "rgba(34,197,94,0.85)" : "rgba(17,24,39,0.8)",
-              color: "#e5e7eb",
-              cursor: "pointer",
-            }}
-          >
-            RUn: {runToggle ? "True" : "False"}
           </button>
         </div>
 

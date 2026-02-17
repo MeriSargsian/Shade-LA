@@ -576,6 +576,38 @@ function RhinoViewer() {
       return;
     }
 
+    const makePoint3d = (x, y, z) => {
+      const P = rhino?.Point3d;
+      if (!P) return null;
+
+      // Attempt A: constructor
+      try {
+        if (typeof P === "function") return new P(x, y, z);
+      } catch {
+        // ignore
+      }
+
+      // Attempt B: callable factory
+      try {
+        if (typeof P === "function") return P(x, y, z);
+      } catch {
+        // ignore
+      }
+
+      // Attempt C: static create / fromArray
+      try {
+        if (typeof P.create === "function") return P.create(x, y, z);
+      } catch {
+        // ignore
+      }
+      try {
+        if (typeof P.fromArray === "function") return P.fromArray([x, y, z]);
+      } catch {
+        // ignore
+      }
+      return null;
+    };
+
     try {
       if (!sendDrawingsToGrasshopper._loggedApis) {
         sendDrawingsToGrasshopper._loggedApis = true;
@@ -622,42 +654,38 @@ function RhinoViewer() {
       let crv = null;
       let builtVia = null;
       try {
-        const makePt3d = (pp) => new rhino.Point3d(pp.x, pp.z, pp.y);
-        const ptsRhino = typeof rhino?.Point3d === "function" ? pts.map(makePt3d) : null;
+        const ptsCoords = pts.map((pp) => ({ x: pp.x, y: -pp.z, z: pp.y }));
+
+        const ptsRhino = [];
+        for (const c of ptsCoords) {
+          const p3 = makePoint3d(c.x, c.y, c.z);
+          if (!p3) {
+            ptsRhino.length = 0;
+            break;
+          }
+          ptsRhino.push(p3);
+        }
+        const hasPtsRhino = ptsRhino.length === ptsCoords.length;
 
         // Special case: 2 points => LineCurve
-        if (!crv && ptsRhino && ptsRhino.length === 2) {
+        if (!crv && ptsCoords && ptsCoords.length === 2) {
           try {
+            const c0 = ptsCoords[0];
+            const c1 = ptsCoords[1];
             if (typeof rhino?.LineCurve === "function") {
               // Different builds expose different ctor signatures. Try a few.
               const attempts = [];
-              const a = ptsRhino[0];
-              const b = ptsRhino[1];
-              const ax = a?.X ?? a?.x;
-              const ay = a?.Y ?? a?.y;
-              const az = a?.Z ?? a?.z;
-              const bx = b?.X ?? b?.x;
-              const by = b?.Y ?? b?.y;
-              const bz = b?.Z ?? b?.z;
+              // Most common: LineCurve(Point3d, Point3d)
+              if (hasPtsRhino && ptsRhino.length === 2) {
+                const a = ptsRhino[0];
+                const b = ptsRhino[1];
+                attempts.push(() => new rhino.LineCurve(a, b));
 
-              // Some builds support LineCurve(Point3d, Point3d)
-              attempts.push(() => new rhino.LineCurve(a, b));
-
-              if (typeof rhino?.Line === "function") {
-                // Prefer LineCurve(Line) in case point-point signature isn't supported.
-                attempts.push(() => {
-                  const ln = new rhino.Line(a, b);
-                  return new rhino.LineCurve(ln);
-                });
-                // Some builds require numeric coords for Line ctor.
-                attempts.push(() => {
-                  const ln = new rhino.Line(ax, ay, az, bx, by, bz);
-                  return new rhino.LineCurve(ln);
-                });
+                if (typeof rhino?.Line === "function") {
+                  // Also common: LineCurve(Line)
+                  attempts.push(() => new rhino.LineCurve(new rhino.Line(a, b)));
+                }
               }
-
-              // Some builds support numeric coords directly in LineCurve ctor.
-              attempts.push(() => new rhino.LineCurve(ax, ay, az, bx, by, bz));
 
               for (const fn of attempts) {
                 try {
@@ -676,7 +704,9 @@ function RhinoViewer() {
             } else if (typeof rhino?.Line === "function") {
               // As a last resort, return a Line (some schemas accept it as geometry).
               try {
-                const ln = new rhino.Line(ptsRhino[0], ptsRhino[1]);
+                const a = makePoint3d(c0.x, c0.y, c0.z);
+                const b = makePoint3d(c1.x, c1.y, c1.z);
+                const ln = a && b ? new rhino.Line(a, b) : null;
                 if (ln) {
                   crv = ln;
                   builtVia = "Line";
@@ -696,7 +726,7 @@ function RhinoViewer() {
         }
 
         // Option 0: Curve.createControlPointCurve(points, degree)
-        if (!crv && ptsRhino && ptsRhino.length >= 3 && typeof rhino?.Curve?.createControlPointCurve === "function") {
+        if (!crv && hasPtsRhino && ptsRhino.length >= 3 && typeof rhino?.Curve?.createControlPointCurve === "function") {
           try {
             const fn = rhino.Curve.createControlPointCurve;
             const arity = fn.length;
@@ -722,7 +752,7 @@ function RhinoViewer() {
 
         // Option 2: NurbsCurve.create(...) (arity differs by build)
         const nurbsCreate = rhino?.NurbsCurve?.create;
-        if (!crv && ptsRhino && typeof nurbsCreate === "function") {
+        if (!crv && hasPtsRhino && typeof nurbsCreate === "function") {
           const attempts = [];
           const arity = nurbsCreate.length;
           // Common guesses across builds
@@ -753,9 +783,9 @@ function RhinoViewer() {
         }
 
         const createFromPoints = rhino?.PolylineCurve?.createFromPoints;
-        if (!crv && typeof createFromPoints === "function") {
+        if (!crv && hasPtsRhino && typeof createFromPoints === "function") {
           try {
-            if (ptsRhino) crv = createFromPoints(ptsRhino);
+            crv = createFromPoints(ptsRhino);
           } catch (e) {
             console.warn("[GH] PolylineCurve.createFromPoints failed", { error: e, message: String(e?.message || e) });
           }
@@ -768,11 +798,8 @@ function RhinoViewer() {
             // Viewer shows Rhino geometry with a -90deg X rotation, so convert back when sending to GH.
             // Map (x, y, z) -> (x, z, y).
             try {
-              if (typeof rhino?.Point3d === "function") {
-                poly.add(new rhino.Point3d(p.x, p.z, p.y));
-              } else {
-                poly.add(p.x, p.z, p.y);
-              }
+              // Prefer numeric add to avoid Point3d construction issues.
+              poly.add(p.x, -p.z, p.y);
             } catch (e) {
               console.warn("[GH] polyline point add failed", {
                 error: e,
@@ -797,13 +824,9 @@ function RhinoViewer() {
           crv = new rhino.PolylineCurve(poly);
         }
       } catch (e) {
-        console.warn("[GH] curve construction failed", {
-          error: e,
-          name: e?.name,
-          message: String(e?.message || e),
-          stack: e?.stack,
-          pts: pts?.length,
-        });
+        console.warn(
+          `[GH] curve construction failed: ${String(e?.name || "Error")}: ${String(e?.message || e)} (pts=${pts?.length})`
+        );
         crv = null;
       }
 
@@ -829,7 +852,13 @@ function RhinoViewer() {
           const json = rhino.CommonObject.encode(crv);
           data = typeof json === "string" ? json : JSON.stringify(json);
         } else if (typeof crv?.toJSON === "function") {
-          const json = crv.toJSON();
+          let json;
+          // Some rhino3dm builds expose toJSON expecting the object as an argument.
+          if (crv.toJSON.length >= 1) json = crv.toJSON(crv);
+          else json = crv.toJSON();
+          data = typeof json === "string" ? json : JSON.stringify(json);
+        } else if (typeof rhino?.CommonObject?.toJSON === "function") {
+          const json = rhino.CommonObject.toJSON(crv);
           data = typeof json === "string" ? json : JSON.stringify(json);
         } else {
           console.warn("[GH] curve has no serializer (encode/toJSON)", {
@@ -844,6 +873,16 @@ function RhinoViewer() {
           hasToJSON: typeof crv?.toJSON === "function",
           hasEncode: typeof rhino?.CommonObject?.encode === "function",
         });
+
+        // Second chance: try CommonObject.toJSON(crv)
+        try {
+          if (!data && typeof rhino?.CommonObject?.toJSON === "function") {
+            const json = rhino.CommonObject.toJSON(crv);
+            data = typeof json === "string" ? json : JSON.stringify(json);
+          }
+        } catch {
+          // ignore
+        }
       }
 
       if (!data) {
@@ -980,6 +1019,17 @@ function RhinoViewer() {
     let triCount = 0;
 
     const classCounts = new Map();
+
+    const hasDecodeFn = typeof rhino?.CommonObject?.decode === "function";
+    const hasFromJsonFn = typeof rhino?.CommonObject?.fromJSON === "function" || typeof rhino?.CommonObject?.FromJSON === "function";
+    if (!hasDecodeFn && hasFromJsonFn) {
+      console.warn("[GH] rhino.CommonObject.decode is not a function; will try CommonObject.fromJSON fallback");
+    } else if (!hasDecodeFn && !hasFromJsonFn) {
+      console.warn("[GH] no rhino CommonObject decoder available (decode/fromJSON)");
+    }
+
+    let decodeFailCount = 0;
+    let skippedItemCount = 0;
 
     const getMeshingParams = () => {
       try {
@@ -1178,9 +1228,27 @@ function RhinoViewer() {
         if (!Array.isArray(items)) continue;
 
         for (const item of items) {
-          const type = item?.type;
-          const data = item?.data;
-          if (!type || data == null) continue;
+          // Resthopper can vary in casing/shape depending on source.
+          const type = item?.type ?? item?.Type;
+          const data = item?.data ?? item?.Data;
+          if (!type || data == null) {
+            skippedItemCount += 1;
+            if (skippedItemCount <= 5) {
+              let keys = [];
+              try {
+                keys = item && typeof item === "object" ? Object.keys(item) : [];
+              } catch {
+                keys = [];
+              }
+              console.warn("[GH] output item missing type/data; skipped", {
+                ParamName: tree?.ParamName,
+                branchKey,
+                keys,
+                item,
+              });
+            }
+            continue;
+          }
 
           let json = data;
           if (typeof json === "string") {
@@ -1193,9 +1261,32 @@ function RhinoViewer() {
 
           let obj;
           try {
-            obj = rhino.CommonObject.decode(json);
-          } catch {
+            if (typeof rhino?.CommonObject?.decode === "function") {
+              obj = rhino.CommonObject.decode(json);
+            } else if (typeof rhino?.CommonObject?.fromJSON === "function") {
+              obj = rhino.CommonObject.fromJSON(json);
+            } else if (typeof rhino?.CommonObject?.FromJSON === "function") {
+              obj = rhino.CommonObject.FromJSON(json);
+            } else {
+              obj = null;
+            }
+          } catch (e) {
             obj = null;
+            decodeFailCount += 1;
+            if (decodeFailCount <= 5) {
+              let snippet = null;
+              try {
+                snippet = typeof data === "string" ? data.slice(0, 160) : JSON.stringify(data).slice(0, 160);
+              } catch {
+                snippet = "<unavailable>";
+              }
+              console.warn("[GH] decode failed", {
+                ParamName: tree?.ParamName,
+                type,
+                message: String(e?.message || e),
+                dataSnippet: snippet,
+              });
+            }
           }
           if (!obj) continue;
 
@@ -1274,35 +1365,17 @@ function RhinoViewer() {
       return;
     }
 
-    // Position overlay relative to the city: center in X/Z and place on the city's ground (minY).
-    // Fallback: center at origin.
+    // Keep overlay in the same coordinate space as the input curves.
+    // Do not auto-center/shift relative to the city bbox, otherwise the result will not
+    // align with the drawn lines that were sent to Grasshopper.
     const bb = new THREE.Box3().setFromObject(overlay);
-    const overlayCenter = bb.getCenter(new THREE.Vector3());
     const overlaySize = bb.getSize(new THREE.Vector3());
-
-    const cityGroups = groupsRef.current;
-    const cityCandidates = [cityGroups?.buildings, cityGroups?.roads, cityGroups?.parks, cityGroups?.water].filter(Boolean);
-    let positioned = false;
-    if (cityCandidates.length) {
-      const cityBB = new THREE.Box3();
-      for (const g of cityCandidates) {
-        cityBB.union(new THREE.Box3().setFromObject(g));
-      }
-      if (Number.isFinite(cityBB.min.y) && Number.isFinite(cityBB.max.y)) {
-        const cityCenter = cityBB.getCenter(new THREE.Vector3());
-        const dx = cityCenter.x - overlayCenter.x;
-        const dz = cityCenter.z - overlayCenter.z;
-        const dy = cityBB.min.y - bb.min.y;
-        overlay.position.add(new THREE.Vector3(dx, dy, dz));
-        positioned = true;
-      }
-    }
-    if (!positioned) {
-      overlay.position.sub(overlayCenter);
-    }
 
     scene.add(overlay);
     ghGroupRef.current = overlay;
+
+    const cityGroups = groupsRef.current;
+    const cityCandidates = [cityGroups?.buildings, cityGroups?.roads, cityGroups?.parks, cityGroups?.water].filter(Boolean);
 
     const maxDim = Math.max(overlaySize.x, overlaySize.y, overlaySize.z);
     const dist = maxDim * 1.8 || 20;
@@ -1712,12 +1785,38 @@ function RhinoViewer() {
   }, []);
 
   useEffect(() => {
+    const onClear = () => {
+      if (sceneRef.current && ghGroupRef.current) {
+        sceneRef.current.remove(ghGroupRef.current);
+        clearGroup(ghGroupRef.current);
+        ghGroupRef.current = null;
+      }
+    };
+
+    window.addEventListener("grasshopper:clear-result", onClear);
+    return () => window.removeEventListener("grasshopper:clear-result", onClear);
+  }, []);
+
+  useEffect(() => {
     const handler = (event) => {
       const data = event?.data;
       if (!data || data.type !== "cadmapper:bbox" || !Array.isArray(data.bbox)) return;
       const bbox = data.bbox;
       if (bbox.length !== 4) return;
       console.log("[Map] bbox received", bbox);
+
+      // New city input invalidates any previously computed Grasshopper overlay.
+      try {
+        pendingGhSchemaRef.current = null;
+      } catch {
+        // ignore
+      }
+      if (sceneRef.current && ghGroupRef.current) {
+        sceneRef.current.remove(ghGroupRef.current);
+        clearGroup(ghGroupRef.current);
+        ghGroupRef.current = null;
+      }
+
       if (!sceneRef.current || !cameraRef.current || !rendererRef.current) {
         pendingBboxRef.current = bbox;
         const canvas = canvasRef.current;

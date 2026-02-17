@@ -14,6 +14,27 @@ type GhParams = {
   updatedAt: number;
 };
 
+function applyDefaults(s: GhParams) {
+  s.x = 5;
+  s.h = 10;
+  s.z = 2;
+  s.edge = 0.01;
+  s.lineStrength = 8;
+  s.lineFactor = 0.5;
+  s.load = 1.0;
+  s.run = true;
+  s.cr = [];
+  s.reset = false;
+  s.updatedAt = Date.now();
+}
+
+function withCors(res: NextResponse) {
+  res.headers.set("Access-Control-Allow-Origin", "*");
+  res.headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.headers.set("Access-Control-Allow-Headers", "Content-Type, Accept");
+  return res;
+}
+
 function getStore(): GhParams {
   const g = globalThis as any;
   if (!g.__ghParams) {
@@ -66,7 +87,8 @@ function coerceCurves(v: unknown): Array<{ type: string; data: string }> | null 
 
 export async function GET(_req: NextRequest) {
   const s = getStore();
-  return NextResponse.json({
+  return withCors(
+    NextResponse.json({
     x: s.x,
     h: s.h,
     z: s.z,
@@ -78,7 +100,12 @@ export async function GET(_req: NextRequest) {
     run: s.run,
     cr: s.cr,
     updatedAt: s.updatedAt,
-  });
+    })
+  );
+}
+
+export async function OPTIONS(_req: NextRequest) {
+  return withCors(new NextResponse(null, { status: 204 }));
 }
 
 export async function POST(req: NextRequest) {
@@ -86,7 +113,7 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
+    return withCors(NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 }));
   }
 
   const x = coerceNumber(body?.x);
@@ -102,6 +129,25 @@ export async function POST(req: NextRequest) {
   const cr = coerceCurves(body?.cr);
 
   const s = getStore();
+  if (reset === true) {
+    applyDefaults(s);
+    return withCors(
+      NextResponse.json({
+        ok: true,
+        x: s.x,
+        h: s.h,
+        z: s.z,
+        edge: s.edge,
+        lineStrength: s.lineStrength,
+        lineFactor: s.lineFactor,
+        load: s.load,
+        reset: s.reset,
+        run: s.run,
+        cr: s.cr,
+        updatedAt: s.updatedAt,
+      })
+    );
+  }
   if (x !== null) s.x = x;
   if (h !== null) s.h = h;
   if (z !== null) s.z = z;
@@ -114,18 +160,20 @@ export async function POST(req: NextRequest) {
   if (cr !== null) s.cr = cr;
   s.updatedAt = Date.now();
 
-  return NextResponse.json({
-    ok: true,
-    x: s.x,
-    h: s.h,
-    z: s.z,
-    edge: s.edge,
-    lineStrength: s.lineStrength,
-    lineFactor: s.lineFactor,
-    load: s.load,
-    reset: s.reset,
-    run: s.run,
-    cr: s.cr,
-    updatedAt: s.updatedAt,
-  });
+  return withCors(
+    NextResponse.json({
+      ok: true,
+      x: s.x,
+      h: s.h,
+      z: s.z,
+      edge: s.edge,
+      lineStrength: s.lineStrength,
+      lineFactor: s.lineFactor,
+      load: s.load,
+      reset: s.reset,
+      run: s.run,
+      cr: s.cr,
+      updatedAt: s.updatedAt,
+    })
+  );
 }
