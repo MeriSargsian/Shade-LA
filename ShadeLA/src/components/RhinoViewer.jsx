@@ -18,6 +18,8 @@ function RhinoViewer() {
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const targetRef = useRef(new THREE.Vector3(0, 0, 0));
+  const desiredCameraPosRef = useRef(null);
+  const desiredTargetRef = useRef(null);
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef(null);
 
@@ -160,12 +162,15 @@ function RhinoViewer() {
 
       // Debug visuals: ensures we see *something* even before GH/OSM overlays are added.
       scene.add(new THREE.AxesHelper(5));
-      scene.add(new THREE.GridHelper(100, 20));
+      scene.add(new THREE.GridHelper(2000, 40));
 
-      const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
+      const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 5_000_000);
       camera.position.set(20, 20, 20);
       targetRef.current.set(0, 0, 0);
       camera.lookAt(targetRef.current);
+
+      desiredCameraPosRef.current = camera.position.clone();
+      desiredTargetRef.current = targetRef.current.clone();
 
       const light = new THREE.DirectionalLight(0xffffff, 0.9);
       light.position.set(10, 20, 15);
@@ -266,6 +271,15 @@ function RhinoViewer() {
       const animate = () => {
         if (cancelled) return;
         if (rendererRef.current && sceneRef.current && cameraRef.current) {
+          const cam = cameraRef.current;
+          const desiredPos = desiredCameraPosRef.current;
+          const desiredTarget = desiredTargetRef.current;
+          if (desiredPos && desiredTarget) {
+            const DAMPING = 0.18;
+            cam.position.lerp(desiredPos, DAMPING);
+            targetRef.current.lerp(desiredTarget, DAMPING);
+            cam.lookAt(targetRef.current);
+          }
           rendererRef.current.render(sceneRef.current, cameraRef.current);
         }
         requestAnimationFrame(animate);
@@ -309,17 +323,67 @@ function RhinoViewer() {
           if (t > 0) zoomPoint = rayOrigin.clone().add(rayDir.clone().multiplyScalar(t));
         }
 
-        const factor = ev.deltaY > 0 ? 1.1 : 0.9;
+        // Stronger zoom that scales with wheel delta.
+        // factor > 1  => zoom out, factor < 1 => zoom in.
+        const ZOOM_SPEED = 0.0025;
+        const factor = Math.exp(ev.deltaY * ZOOM_SPEED);
         const newPos = zoomPoint.clone().add(cameraNow.position.clone().sub(zoomPoint).multiplyScalar(factor));
 
         // Keep the point under the cursor stable by shifting the orbit target.
         const newTarget = zoomPoint.clone().add(target.clone().sub(zoomPoint).multiplyScalar(factor));
 
-        cameraNow.position.copy(newPos);
-        targetRef.current.copy(newTarget);
-        cameraNow.lookAt(targetRef.current);
+        // Prevent the camera from crossing the target (keeps controls stable) but still
+        // allow very close zoom.
+        const MIN_DISTANCE = 0.03;
+        const toTarget = newPos.clone().sub(newTarget);
+        const dist = toTarget.length();
+        if (Number.isFinite(dist) && dist < MIN_DISTANCE) {
+          toTarget.setLength(MIN_DISTANCE);
+          newPos.copy(newTarget.clone().add(toTarget));
+        }
+
+        desiredCameraPosRef.current = newPos;
+        desiredTargetRef.current = newTarget;
       };
       canvas.addEventListener("wheel", handleWheel, { passive: false });
+
+      const raycaster = new THREE.Raycaster();
+      const handleDoubleClick = (ev) => {
+        if (!cameraRef.current || !sceneRef.current || !canvasRef.current) return;
+        const cameraNow = cameraRef.current;
+        const canvasEl = canvasRef.current;
+        const rect = canvasEl.getBoundingClientRect();
+        const ndc = new THREE.Vector2(
+          ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+          -(((ev.clientY - rect.top) / rect.height) * 2 - 1)
+        );
+
+        raycaster.setFromCamera(ndc, cameraNow);
+
+        const cityGroups = groupsRef.current;
+        const roots = [
+          cityGroups?.buildings,
+          cityGroups?.roads,
+          cityGroups?.parks,
+          cityGroups?.water,
+          ghGroupRef.current,
+          drawGroupRef.current,
+        ].filter(Boolean);
+
+        const hits = raycaster.intersectObjects(roots, true);
+        if (!hits || hits.length < 1) return;
+
+        const p = hits[0]?.point;
+        if (!p) return;
+
+        // Set orbit target to the clicked point. Keep current camera distance so it feels like "focus".
+        const currentTarget = (desiredTargetRef.current || targetRef.current).clone();
+        const currentPos = (desiredCameraPosRef.current || cameraNow.position).clone();
+        const offset = currentPos.sub(currentTarget);
+        desiredTargetRef.current = p.clone();
+        desiredCameraPosRef.current = p.clone().add(offset);
+      };
+      canvas.addEventListener("dblclick", handleDoubleClick);
 
       const screenToGround = (ev) => {
         if (!cameraRef.current || !canvasRef.current) return null;
@@ -448,8 +512,9 @@ function RhinoViewer() {
         spherical.phi = Math.max(EPS, Math.min(Math.PI - EPS, spherical.phi));
 
         offset.setFromSpherical(spherical);
-        cameraNow.position.copy(new THREE.Vector3().addVectors(target, offset));
-        cameraNow.lookAt(target);
+        const nextPos = new THREE.Vector3().addVectors(target, offset);
+        desiredCameraPosRef.current = nextPos;
+        desiredTargetRef.current = target.clone();
       };
 
       canvas.addEventListener("mousedown", handleMouseDown);
@@ -460,6 +525,7 @@ function RhinoViewer() {
       const cleanup = () => {
         window.removeEventListener("resize", handleResize);
         canvas.removeEventListener("wheel", handleWheel);
+        canvas.removeEventListener("dblclick", handleDoubleClick);
         canvas.removeEventListener("mousedown", handleMouseDown);
         window.removeEventListener("mouseup", handleMouseUp);
         canvas.removeEventListener("mouseleave", handleMouseUp);
@@ -576,6 +642,8 @@ function RhinoViewer() {
       return;
     }
 
+    const GH_UNIT_SCALE = 1;
+
     const makePoint3d = (x, y, z) => {
       const P = rhino?.Point3d;
       if (!P) return null;
@@ -654,7 +722,7 @@ function RhinoViewer() {
       let crv = null;
       let builtVia = null;
       try {
-        const ptsCoords = pts.map((pp) => ({ x: pp.x, y: -pp.z, z: pp.y }));
+        const ptsCoords = pts.map((pp) => ({ x: pp.x * GH_UNIT_SCALE, y: -pp.z * GH_UNIT_SCALE, z: pp.y * GH_UNIT_SCALE }));
 
         const ptsRhino = [];
         for (const c of ptsCoords) {
@@ -799,7 +867,7 @@ function RhinoViewer() {
             // Map (x, y, z) -> (x, z, y).
             try {
               // Prefer numeric add to avoid Point3d construction issues.
-              poly.add(p.x, -p.z, p.y);
+              poly.add(p.x * GH_UNIT_SCALE, -p.z * GH_UNIT_SCALE, p.y * GH_UNIT_SCALE);
             } catch (e) {
               console.warn("[GH] polyline point add failed", {
                 error: e,
@@ -1011,6 +1079,10 @@ function RhinoViewer() {
 
     // Rhino is Z-up; Three.js is Y-up. Rotate so Rhino Z becomes Three Y.
     overlay.rotation.x = -Math.PI / 2;
+
+    // Rhino/GH runs in mm; the city/drawing space is treated as meters in the viewer.
+    // Scale the overlay back down to match the viewer.
+    overlay.scale.setScalar(1);
 
     const mat = new THREE.MeshStandardMaterial({ color: 0xff7a00, metalness: 0.1, roughness: 0.7 });
 
@@ -1478,13 +1550,16 @@ function RhinoViewer() {
         return;
       }
     } catch (e) {
+      const name = String(e?.name || "");
       const msg = String(e?.message || e);
-      console.warn("[OSM] fetch /api/osm failed", e);
-      if (msg.toLowerCase().includes("aborted") || msg.toLowerCase().includes("abort")) {
-        if (seq === osmRenderSeqRef.current) setModelStatus("OSM request timed out (30s)");
-      } else {
-        if (seq === osmRenderSeqRef.current) setModelStatus(`OSM request error: ${msg}`);
+      const isAbort = name === "AbortError" || msg.toLowerCase().includes("aborted") || msg.toLowerCase().includes("abort");
+      if (isAbort) {
+        // Expected when switching bbox quickly or when a new render starts.
+        return;
       }
+
+      console.warn("[OSM] fetch /api/osm failed", e);
+      if (seq === osmRenderSeqRef.current) setModelStatus(`OSM request error: ${msg}`);
       return;
     } finally {
       if (osmAbortRef.current && osmAbortRef.current.signal?.aborted) {
@@ -1544,15 +1619,15 @@ function RhinoViewer() {
 
       const cx = (west + east) / 2;
       const cy = (south + north) / 2;
-      const spanLon = Math.max(1e-6, east - west);
-      const spanLat = Math.max(1e-6, north - south);
-      const halfSize = 50;
+
+      // Convert lon/lat to local meters (approx). This preserves aspect ratio and prevents
+      // buildings looking unnaturally stretched.
+      const metersPerDegLat = 111320;
+      const metersPerDegLon = 111320 * Math.cos((cy * Math.PI) / 180);
 
       const projectPoint = (lon, lat) => {
-        const nx = (lon - cx) / spanLon;
-        const ny = (lat - cy) / spanLat;
-        const x = nx * halfSize * 2;
-        const y = ny * halfSize * 2;
+        const x = (lon - cx) * metersPerDegLon;
+        const y = (lat - cy) * metersPerDegLat;
         return new THREE.Vector3(x, y, 0);
       };
 
@@ -1574,11 +1649,8 @@ function RhinoViewer() {
 
         const shapePts = [];
         for (const [lon, lat] of ring) {
-          const nx = (lon - cx) / spanLon;
-          const ny = (lat - cy) / spanLat;
-          const x = nx * halfSize * 2;
-          const y = ny * halfSize * 2;
-          shapePts.push(new THREE.Vector2(x, y));
+          const p = projectPoint(lon, lat);
+          shapePts.push(new THREE.Vector2(p.x, p.y));
         }
 
         const shape = new THREE.Shape(shapePts);
@@ -1596,7 +1668,9 @@ function RhinoViewer() {
           h = lv * 3.0;
         }
 
-        const height = Math.min(30, Math.max(2, h / 12));
+        // OSM building heights are typically in meters. Use them directly (with a reasonable clamp)
+        // so the city doesn't look like needles.
+        const height = Math.min(200, Math.max(2, h));
 
         const extrudeGeom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
         extrudeGeom.rotateX(-Math.PI / 2);
@@ -1662,11 +1736,8 @@ function RhinoViewer() {
 
         const shapePts = [];
         for (const [lon, lat] of ring) {
-          const nx = (lon - cx) / spanLon;
-          const ny = (lat - cy) / spanLat;
-          const x = nx * halfSize * 2;
-          const y = ny * halfSize * 2;
-          shapePts.push(new THREE.Vector2(x, y));
+          const p = projectPoint(lon, lat);
+          shapePts.push(new THREE.Vector2(p.x, p.y));
         }
 
         const shape = new THREE.Shape(shapePts);
@@ -1754,6 +1825,12 @@ function RhinoViewer() {
       const maxDim = Math.max(size.x, size.y, size.z);
       const dist = maxDim * 1.8 || 20;
       if (cameraRef.current) {
+        // City is in meters and can span many kilometers; keep far plane large enough to avoid clipping.
+        const nextFar = Math.max(cameraRef.current.far || 0, dist * 10, 50_000);
+        if (nextFar !== cameraRef.current.far) {
+          cameraRef.current.far = nextFar;
+          cameraRef.current.updateProjectionMatrix();
+        }
         cameraRef.current.position.set(dist, dist, dist);
         targetRef.current.set(0, 0, 0);
         cameraRef.current.lookAt(targetRef.current);

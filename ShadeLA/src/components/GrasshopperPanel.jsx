@@ -311,9 +311,9 @@ function GrasshopperPanel() {
             <div style={{ color: "#e5e7eb", fontSize: 12, opacity: 0.9 }}>EdgeLengthFactor: {edgeLengthFactor}</div>
             <input
               type="range"
-              min={0.001}
+              min={0}
               max={1}
-              step={0.001}
+              step={0.01}
               value={edgeLengthFactor}
               onChange={(e) => setEdgeLengthFactor(Number(e.target.value))}
             />
@@ -334,8 +334,8 @@ function GrasshopperPanel() {
             <input
               type="range"
               min={0}
-              max={1}
-              step={0.01}
+              max={3}
+              step={0.1}
               value={lineLengthFactor}
               onChange={(e) => setLineLengthFactor(Number(e.target.value))}
             />
@@ -345,8 +345,8 @@ function GrasshopperPanel() {
             <input
               type="range"
               min={0}
-              max={5}
-              step={0.01}
+              max={40.04001}
+              step={0.00001}
               value={loadFactor}
               onChange={(e) => setLoadFactor(Number(e.target.value))}
             />

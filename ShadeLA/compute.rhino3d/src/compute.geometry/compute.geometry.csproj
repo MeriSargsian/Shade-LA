@@ -26,14 +26,6 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Optimize>True</Optimize>
   </PropertyGroup>
-  <ItemGroup>
-    <Compile Remove="RhinoCompute.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="RhinoCompute.cs">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </EmbeddedResource>
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Carter" Version="7.0.0" />
