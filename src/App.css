@@ -182,6 +182,8 @@ main {
   grid-template-columns: 1.2fr 0.8fr;
   gap: 20px;
   align-items: center;
+  margin-bottom: 2%;
+
 }
 
 .badge {
@@ -239,6 +241,7 @@ main {
 
 .hero-panel {
   padding: 0;
+  margin-bottom: 2%;
 }
 
 .hero-card {
@@ -301,6 +304,8 @@ main {
   border-radius: 16px;
   padding: 12px 12px 10px;
   border: 1px solid rgba(96, 165, 250, 0.15);
+  margin-bottom: 2%;
+
 }
 
 .panel h3 {
@@ -810,6 +815,7 @@ main #canopy-trees .resources-original .embed-actions {
 
   .hero {
     grid-template-columns: 1fr;
+    margin-bottom: 2%;
   }
 
   .workspace-grid {

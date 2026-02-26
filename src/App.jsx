@@ -27,7 +27,7 @@ function App() {
       { href: "#overview", label: "Overview" },
       { href: "#analytics", label: "PowerBI" },
       { href: "#workspace", label: "Map + Unreal" },
-      { href: "#canopy-trees", label: "Canopy / Trees" },
+      { href: "#canopy-trees", label: "Shade Solutions" },
       { href: "#resources", label: "Resources" },
     ],
     []
@@ -139,7 +139,7 @@ function App() {
       <main>
         <section className="hero" id="overview">
           <div>
-            <h2>Shade-LA</h2>
+            <h1>Shade-LA</h1>
             <p>
               Shade-LA is a digital twin–based visualization and analysis platform focused on urban shade
               infrastructure in Los Angeles. The project integrates geospatial data, 3D visualization,
