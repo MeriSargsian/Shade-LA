@@ -5,6 +5,7 @@ import GrasshopperPanel from "./components/GrasshopperPanel";
 import RhinoViewer from "./components/RhinoViewer";
 import CanopyTreesSection from "./components/CanopyTreesSection";
 import ResourcesSections from "./components/ResourcesSections";
+import Solutions from "./components/SolutionsTable";
 
 function App() {
   const [selectedArea, setSelectedArea] = useState(null);
@@ -229,7 +230,8 @@ function App() {
           </div>
         </section>
 
-        <CanopyTreesSection />
+        {/* <CanopyTreesSection /> */}
+        <Solutions />
         <ResourcesSections />
       </main>
     </div>

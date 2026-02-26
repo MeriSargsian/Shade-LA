@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from "react";
 import rankingData from "../data/rankingData.json";
 
-
 const columns = [
   { key: "CityName", label: "City / Area", width: "28%" },
   { key: "Priority", label: "Priority", width: "10%" },

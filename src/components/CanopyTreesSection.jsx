@@ -32,7 +32,7 @@ function CanopyTreesSection() {
   return (
     <section className="panel" id="canopy-trees">
       <div className="panel-header">
-        <h2>Canopy / Trees</h2>
+        <h2>Shade Solutions</h2>
       </div>
       <div className="panel-body resources-body">
         <div className="resources-original">
