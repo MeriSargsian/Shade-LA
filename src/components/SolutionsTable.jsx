@@ -1,6 +1,5 @@
-// src/components/Solutions.jsx
+// src/components/SolutionsTable.jsx
 import React, { useMemo, useState } from "react";
-import solutions from "../data/Solutions.json";
 
 const TABLE_COLUMNS = [
   { key: "name", label: "Name", type: "text" },
@@ -10,10 +9,6 @@ const TABLE_COLUMNS = [
   { key: "idealPlacementTitle", label: "Ideal Placement", type: "text" },
 ];
 
-// Filters requirements:
-// - Keep all dropdown selects (shadeCategory, primaryMaterial, techIntegration)
-// - Add dropdown select for Placement.Title (call it "Ideal Placement")
-// - Delete filters for ID, Name, Ideal Placement (Description)
 const FILTER_FIELDS = [
   { key: "shadeCategory", label: "Shade Category" },
   { key: "primaryMaterial", label: "Primary Material" },
@@ -26,17 +21,16 @@ function toText(v) {
   return String(v);
 }
 
-export default function Solutions() {
-  // Flatten nested idealPlacement into simple fields for table + filtering
+export default function SolutionsTable({ data, selectedId, onSelect }) {
+  // flatten idealPlacement for table/filtering, but keep original row too
   const rows = useMemo(() => {
-    return (solutions ?? []).map((s) => ({
+    return (data ?? []).map((s) => ({
       ...s,
       idealPlacementTitle: s.idealPlacement?.title ?? "",
       idealPlacementDescription: s.idealPlacement?.description ?? "",
     }));
-  }, []);
+  }, [data]);
 
-  // Dropdown options for each filter field
   const selectOptions = useMemo(() => {
     const opts = {};
     for (const field of FILTER_FIELDS) {
@@ -51,7 +45,7 @@ export default function Solutions() {
   const [globalQuery, setGlobalQuery] = useState("");
   const [selectFilters, setSelectFilters] = useState(() => {
     const init = {};
-    for (const f of FILTER_FIELDS) init[f.key] = ""; // "" = All
+    for (const f of FILTER_FIELDS) init[f.key] = "";
     return init;
   });
 
@@ -59,7 +53,6 @@ export default function Solutions() {
     const gq = globalQuery.trim().toLowerCase();
 
     return rows.filter((r) => {
-      // Global search across all non-photo columns (including ID/Name/Description)
       if (gq) {
         const hit = TABLE_COLUMNS.some((col) => {
           if (col.type === "photo") return false;
@@ -68,10 +61,9 @@ export default function Solutions() {
         if (!hit) return false;
       }
 
-      // Dropdown filters only
       for (const f of FILTER_FIELDS) {
         const selected = toText(selectFilters[f.key]).trim();
-        if (!selected) continue; // All
+        if (!selected) continue;
         if (toText(r[f.key]).trim() !== selected) return false;
       }
 
@@ -90,7 +82,7 @@ export default function Solutions() {
 
   return (
     <div style={{ width: "100%" }}>
-      {/* Top controls */}
+      {/* Controls */}
       <div
         style={{
           display: "flex",
@@ -132,7 +124,7 @@ export default function Solutions() {
         </button>
 
         <div style={{ opacity: 0.85 }}>
-          Showing <b>{filteredRows.length}</b> of <b>{rows.length}</b>
+          Rows: <b>{filteredRows.length}</b>
         </div>
       </div>
 
@@ -151,12 +143,22 @@ export default function Solutions() {
               {f.label}
             </span>
 
-           <select
-              className="custom-select"
+            <select
+              // add your className here if you're using custom select css:
+              // className="custom-select"
               value={selectFilters[f.key]}
               onChange={(e) =>
                 setSelectFilters((prev) => ({ ...prev, [f.key]: e.target.value }))
               }
+                className="custom-select"
+                              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid rgba(255,255,255,0.2)",
+                background: "transparent",
+                color: "inherit",
+                
+              }}
             >
               <option value="">All</option>
               {(selectOptions[f.key] ?? []).map((opt) => (
@@ -165,18 +167,18 @@ export default function Solutions() {
                 </option>
               ))}
             </select>
-
           </div>
         ))}
       </div>
 
-      {/* Scrollable table */}
+      {/* Scrollable table (~4 rows height) */}
       <div
         style={{
-          maxHeight: 220,
+          maxHeight: 320,
           overflowY: "auto",
-          scrollbarWidth: "thin",
-          scrollbarColor: "rgba(255,255,255,0.3) transparent",
+          overflowX: "auto",
+          border: "1px solid rgba(255,255,255,0.15)",
+          borderRadius: 12,
         }}
       >
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -207,24 +209,55 @@ export default function Solutions() {
             {filteredRows.length === 0 ? (
               <tr>
                 <td colSpan={TABLE_COLUMNS.length} style={{ padding: 14, opacity: 0.75 }}>
-                  No results. Try clearing filters.
+                  No results.
                 </td>
               </tr>
             ) : (
-              filteredRows.map((r) => (
-                <tr
-                  key={r.id}
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
-                >
-                  {TABLE_COLUMNS.map((col) => {
-                    return (
-                      <td key={col.key} style={{ padding: "10px 12px" }}>
-                        {toText(r[col.key])}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
+              filteredRows.map((r) => {
+                const isSelected = r.id === selectedId;
+
+                return (
+                  <tr
+                    key={r.id}
+                    onClick={() => onSelect?.(r)}
+                    style={{
+                      borderBottom: "1px solid rgba(255,255,255,0.08)",
+                      cursor: "pointer",
+                      background: isSelected ? "rgba(78, 161, 255, 0.12)" : "transparent",
+                    }}
+                  >
+                    {TABLE_COLUMNS.map((col) => {
+                      if (col.type === "photo") {
+                        const imgSrc = `../data/${r.photo}`;
+                        return (
+                          <td key={col.key} style={{ padding: "10px 12px" }}>
+                            <img
+                              src={imgSrc}
+                              alt={r.name}
+                              style={{
+                                width: 84,
+                                height: 54,
+                                objectFit: "cover",
+                                borderRadius: 10,
+                                border: "1px solid rgba(255,255,255,0.15)",
+                              }}
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
+                          </td>
+                        );
+                      }
+
+                      return (
+                        <td key={col.key} style={{ padding: "10px 12px" }}>
+                          {toText(r[col.key])}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

@@ -5,7 +5,7 @@ import GrasshopperPanel from "./components/GrasshopperPanel";
 import RhinoViewer from "./components/RhinoViewer";
 import CanopyTreesSection from "./components/CanopyTreesSection";
 import ResourcesSections from "./components/ResourcesSections";
-import Solutions from "./components/SolutionsTable";
+import Solutions from "./components/Solutions";
 
 function App() {
   const [selectedArea, setSelectedArea] = useState(null);
@@ -28,7 +28,7 @@ function App() {
       { href: "#overview", label: "Overview" },
       { href: "#analytics", label: "PowerBI" },
       { href: "#workspace", label: "Map + Unreal" },
-      { href: "#canopy-trees", label: "Shade Solutions" },
+      { href: "#solutions", label: "Shade Solutions" },
       { href: "#resources", label: "Resources" },
     ],
     []
@@ -230,8 +230,15 @@ function App() {
           </div>
         </section>
 
-        {/* <CanopyTreesSection /> */}
-        <Solutions />
+            <section className="panel" id="solutions">
+              <div className="panel-header">
+                <h2>Shade Solutions</h2>
+              </div>
+              <div className="panel-body">
+                <Solutions /> 
+              </div>        
+            </section>
+
         <ResourcesSections />
       </main>
     </div>
